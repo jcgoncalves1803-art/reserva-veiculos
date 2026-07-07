@@ -246,6 +246,20 @@ elif pagina == "Nova Reserva":
     hora_retorno_str = hora_retorno.strftime("%H:%M") if hora_retorno else None
     disponivel, reserva_conflito = verificar_disponibilidade(df_reservas, placa_selecionada, data_inicio, data_fim, hora_saida_str, hora_retorno_str)
     if disponivel:
+        veiculos_reservados_periodo = set()
+        for idx, row in df_reservas.iterrows():
+            if row["status"] == "Ativa" and row["placa"] != placa_selecionada:
+                reserva_inicio = row["data_reserva"]
+                reserva_fim = row.get("data_fim", reserva_inicio)
+                if reserva_fim is None or pd.isna(reserva_fim):
+                    reserva_fim = reserva_inicio
+                if data_inicio <= reserva_fim and data_fim >= reserva_inicio:
+                    veiculos_reservados_periodo.add(row["placa"])
+        total_reservados = len(veiculos_reservados_periodo) + 1
+        if total_reservados >= len(VEICULOS):
+            disponivel = False
+            st.error("BLOQUEADO - Nao e possivel reservar. O site precisa ter pelo menos 1 veiculo disponivel neste periodo.")
+    if disponivel:
         st.success(f"DISPONIVEL - Veiculo {placa_selecionada} disponivel de {data_inicio.strftime('%d/%m/%Y')} ate {data_fim.strftime('%d/%m/%Y')}")
     else:
         st.error(f"INDISPONIVEL - Veiculo {placa_selecionada} ja reservado no periodo por: {reserva_conflito['condutor']} (Destino: {reserva_conflito['destino']})")
