@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date, time, timedelta
+import calendar
 import smartsheet
 
 st.set_page_config(page_title="Reserva de Veiculos", page_icon="car", layout="wide")
@@ -179,7 +180,7 @@ st.sidebar.title("Reserva de Veiculos")
 st.sidebar.markdown("---")
 condutor_logado = st.sidebar.selectbox("Quem esta usando:", CONDUTORES)
 st.sidebar.markdown("---")
-pagina = st.sidebar.radio("Navegacao", ["Home", "Nova Reserva", "Reservas Ativas", "Cancelar Reserva", "Historico"])
+pagina = st.sidebar.radio("Navegacao", ["Home", "Nova Reserva", "Reservas Ativas", "Cancelar Reserva", "Historico", "Calendario"])
 st.sidebar.markdown("---")
 st.sidebar.caption("Syngenta - Parent Seeds Operations")
 
@@ -372,3 +373,78 @@ elif pagina == "Historico":
                 df_hist_exibir["Data Fim"] = pd.to_datetime(df_hist_exibir["Data Fim"]).dt.strftime("%d/%m/%Y")
             st.dataframe(df_hist_exibir, use_container_width=True, hide_index=True)
             st.metric("Total de registros", len(df_hist))
+
+elif pagina == "Calendario":
+    st.title("Calendario de Reservas")
+    st.markdown("---")
+    if df_reservas.empty:
+        st.info("Nenhuma reserva registrada.")
+    else:
+        col_mes, col_ano, col_placa = st.columns(3)
+        with col_mes:
+            mes_selecionado = st.selectbox("Mes:", list(range(1, 13)), index=date.today().month - 1, format_func=lambda x: ["Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"][x-1])
+        with col_ano:
+            ano_selecionado = st.selectbox("Ano:", [2025, 2026, 2027], index=1)
+        with col_placa:
+            placas_cal = ["Todos"] + list(VEICULOS.keys())
+            placa_filtro = st.selectbox("Veiculo:", placas_cal, key="cal_placa")
+        st.markdown("---")
+        cores_veiculos = {"SHI-6J15": "#9b59b6", "SHI-6J17": "#e74c3c", "SHI-6J19": "#3498db", "SHI-6J20": "#2ecc71"}
+        legenda_html = ""
+        for placa, info in VEICULOS.items():
+            cor = cores_veiculos.get(placa, "#95a5a6")
+            legenda_html += f'<span style="background-color:{cor}; color:white; padding:2px 8px; border-radius:4px; margin-right:10px; font-size:12px;">{placa} - {info["modelo"]}</span>'
+        st.markdown(f"<div style='margin-bottom:15px;'>{legenda_html}</div>", unsafe_allow_html=True)
+        cal = calendar.monthcalendar(ano_selecionado, mes_selecionado)
+        dias_semana = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"]
+        header_html = "<tr>"
+        for dia in dias_semana:
+            header_html += f'<th style="text-align:center; padding:8px; background-color:#f0f0f0; border:1px solid #ddd;">{dia}</th>'
+        header_html += "</tr>"
+        body_html = ""
+        for semana in cal:
+            body_html += "<tr>"
+            for dia in semana:
+                if dia == 0:
+                    body_html += '<td style="border:1px solid #eee; padding:5px; height:80px; vertical-align:top;"></td>'
+                else:
+                    data_dia = date(ano_selecionado, mes_selecionado, dia)
+                    reservas_dia = []
+                    for idx, row in df_reservas.iterrows():
+                        if row["status"] == "Ativa":
+                            inicio = row["data_reserva"]
+                            fim = row.get("data_fim", inicio)
+                            if fim is None or pd.isna(fim):
+                                fim = inicio
+                            if inicio <= data_dia <= fim:
+                                if placa_filtro == "Todos" or row["placa"] == placa_filtro:
+                                    reservas_dia.append(row)
+                    reservas_html = ""
+                    for r in reservas_dia:
+                        cor = cores_veiculos.get(r["placa"], "#95a5a6")
+                        condutor_nome = r.get("condutor", "")
+                        if len(str(condutor_nome)) > 12:
+                            condutor_nome = str(condutor_nome)[:12] + ".."
+                        reservas_html += f'<div style="background-color:{cor}; color:white; font-size:10px; padding:2px 4px; border-radius:3px; margin-top:2px; overflow:hidden; white-space:nowrap;">{condutor_nome}</div>'
+                    hoje_style = "background-color:#e8f5e9;" if data_dia == date.today() else ""
+                    body_html += f'<td style="border:1px solid #ddd; padding:5px; height:80px; vertical-align:top; {hoje_style}"><strong>{dia}</strong>{reservas_html}</td>'
+            body_html += "</tr>"
+        table_html = f'<table style="width:100%; border-collapse:collapse;">{header_html}{body_html}</table>'
+        st.markdown(table_html, unsafe_allow_html=True)
+        st.markdown("---")
+        st.subheader("Reservas do mes")
+        df_mes = df_reservas[(df_reservas["status"] == "Ativa") & (df_reservas["data_reserva"].apply(lambda x: x.month == mes_selecionado and x.year == ano_selecionado if x else False))].sort_values("data_reserva")
+        if placa_filtro != "Todos":
+            df_mes = df_mes[df_mes["placa"] == placa_filtro]
+        if df_mes.empty:
+            st.info("Nenhuma reserva neste mes.")
+        else:
+            colunas_exibir = ["placa", "modelo", "condutor", "destino", "data_reserva", "data_fim", "hora_saida", "hora_retorno"]
+            colunas_exibir = [c for c in colunas_exibir if c in df_mes.columns]
+            df_mes_exibir = df_mes[colunas_exibir].copy()
+            df_mes_exibir.columns = ["Placa", "Modelo", "Condutor", "Destino", "Data Inicio", "Data Fim", "Saida", "Retorno"][:len(colunas_exibir)]
+            if "Data Inicio" in df_mes_exibir.columns:
+                df_mes_exibir["Data Inicio"] = pd.to_datetime(df_mes_exibir["Data Inicio"]).dt.strftime("%d/%m/%Y")
+            if "Data Fim" in df_mes_exibir.columns:
+                df_mes_exibir["Data Fim"] = pd.to_datetime(df_mes_exibir["Data Fim"]).dt.strftime("%d/%m/%Y")
+            st.dataframe(df_mes_exibir, use_container_width=True, hide_index=True)
