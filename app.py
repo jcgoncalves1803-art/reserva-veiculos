@@ -259,7 +259,7 @@ elif pagina == "Nova Reserva":
         if total_reservados >= len(VEICULOS):
             disponivel = False
             st.error("BLOQUEADO - Nao e possivel reservar. O site precisa ter pelo menos 1 veiculo disponivel neste periodo.")
-  if disponivel:
+    if disponivel:
         st.success(f"DISPONIVEL - Veiculo {placa_selecionada} disponivel de {data_inicio.strftime('%d/%m/%Y')} ate {data_fim.strftime('%d/%m/%Y')}")
     else:
         if reserva_conflito is not None:
