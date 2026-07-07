@@ -393,7 +393,7 @@ elif pagina == "Calendario":
             placas_cal = ["Todos"] + list(VEICULOS.keys())
             placa_filtro = st.selectbox("Veiculo:", placas_cal, key="cal_placa")
         st.markdown("---")
-        cores_veiculos = {"SHI-6J15": "#9b59b6", "SHI-6J17": "#e74c3c", "SHI-6J19": "#3498db", "SHI-6J20": "#2ecc71"}
+        cores_veiculos = {"SHI-6J15": "#5F7800", "SHI-6J17": "#AB2E78", "SHI-6J19": "#3498db", "SHI-6J20": "#2ecc71"}
         legenda_html = ""
         for placa, info in VEICULOS.items():
             cor = cores_veiculos.get(placa, "#95a5a6")
