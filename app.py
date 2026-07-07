@@ -170,10 +170,10 @@ except Exception as e:
 st.markdown("""
 <style>
     .card {padding: 20px; border-radius: 12px; text-align: center; color: white; margin-bottom: 10px;}
-    .card-azul {background: linear-gradient(135deg, #00A0BE 0%, #e91e63 100%);}
-    .card-verde {background: linear-gradient(135deg, #5F7800 0%, #2e7d32 100%);}
-    .card-laranja {background: linear-gradient(135deg, #AB2E78 0%, #1565c0 100%);}
-    .card-cinza {background: linear-gradient(135deg, #334C56 0%, #0277bd 100%);}
+    .card-azul {background: linear-gradient(135deg, #00A0BE 0%, #00A0BE 100%);}
+    .card-verde {background: linear-gradient(135deg, #5F7800 0%, #5F7800 100%);}
+    .card-laranja {background: linear-gradient(135deg, #AB2E78 0%, #AB2E78 100%);}
+    .card-cinza {background: linear-gradient(135deg, #334C56 0%, #334C56 100%);}
     .card h2 {margin: 0; font-size: 2.5em;}
     .card p {margin: 5px 0 0 0; font-size: 1.1em; opacity: 0.9;}
 </style>
