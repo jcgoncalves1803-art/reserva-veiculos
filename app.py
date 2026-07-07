@@ -6,8 +6,12 @@ import smartsheet
 
 st.set_page_config(page_title="Reserva de Veiculos", page_icon="car", layout="wide")
 
-SMARTSHEET_TOKEN = "2g2PXCKnWbqmN8SHjbxA6MlxsmokO1spK6Oek"
-SHEET_ID = 2989343672061828
+try:
+    SMARTSHEET_TOKEN = st.secrets["SMARTSHEET_TOKEN"]
+    SHEET_ID = int(st.secrets["SHEET_ID"])
+except:
+    SMARTSHEET_TOKEN = "2g2PXCKnWbqmN8SHjbxA6MlxsmokO1spK6Oek"
+    SHEET_ID = 2989343672061828
 SHEET_CONDUTORES_ID = 639574043742084
 SHEET_VEICULOS_ID = 8521380734652292
 
@@ -166,10 +170,10 @@ except Exception as e:
 st.markdown("""
 <style>
     .card {padding: 20px; border-radius: 12px; text-align: center; color: white; margin-bottom: 10px;}
-    .card-azul {background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);}
-    .card-verde {background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);}
-    .card-laranja {background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);}
-    .card-cinza {background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%);}
+    .card-azul {background: linear-gradient(135deg, #c2185b 0%, #e91e63 100%);}
+    .card-verde {background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);}
+    .card-laranja {background: linear-gradient(135deg, #0d47a1 0%, #1565c0 100%);}
+    .card-cinza {background: linear-gradient(135deg, #01579b 0%, #0277bd 100%);}
     .card h2 {margin: 0; font-size: 2.5em;}
     .card p {margin: 5px 0 0 0; font-size: 1.1em; opacity: 0.9;}
 </style>
