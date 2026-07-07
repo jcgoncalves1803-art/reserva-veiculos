@@ -6,8 +6,8 @@ import smartsheet
 
 st.set_page_config(page_title="Reserva de Veiculos", page_icon="car", layout="wide")
 
-SMARTSHEET_TOKEN = st.secrets["SMARTSHEET_TOKEN"]
-SHEET_ID = int(st.secrets["SHEET_ID"])
+SMARTSHEET_TOKEN = "2g2PXCKnWbqmN8SHjbxA6MlxsmokO1spK6Oek"
+SHEET_ID = 2989343672061828
 SHEET_CONDUTORES_ID = 639574043742084
 SHEET_VEICULOS_ID = 8521380734652292
 
