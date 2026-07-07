@@ -17,11 +17,32 @@ VEICULOS = {
 }
 
 CONDUTORES = [
-    "Jessica Goncalves",
+    "Jéssica Gonçalves",
     "Josiane Macedo",
-    "Adriano Ferreira",
-    "Carlos Silva",
-    "Maria Santos",
+    "Adriano César Ferreira",
+    "Ana Paula Maria de Sousa,
+    "André Martins Tomasin,
+    "Bruno Barroso dos Santos,
+    "Cloves Barbosa Costa,
+    "Dionizio Honório de Oliveira Neto,
+    "Edmundo Teixeira,
+    "Gabriela de Mello,
+    "Gabriela Magossi Inácio,
+    "Luciano Aparecido Zuin,
+    "Marcelo Jacintho Pereira Castro",
+    "Matheus Henrique Grandim",
+    "Murilo Thiago Manginelli,
+    "Paulo Henrique da Silva Manzi,
+    "Paulo Henrique Ronconi,
+    "Vanessa de Sousa Costa,
+    "Gustavo Madalena,
+    "Cristiano de Paula Silva,
+    "Giovana Ribeiro Barsotti,
+    "Daniel Daré,
+    "Thiago Adriano Tomaz,
+    "Eduardo Tomaz Terence,
+    "Isabela Martins,
+    "Leonardo Cunha de Araújo,
 ]
 
 def obter_colunas():
