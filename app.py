@@ -259,13 +259,13 @@ elif pagina == "Nova Reserva":
         if total_reservados >= len(VEICULOS):
             disponivel = False
             st.error("BLOQUEADO - Nao e possivel reservar. O site precisa ter pelo menos 1 veiculo disponivel neste periodo.")
-        262    if disponivel:
-263        st.success(f"DISPONIVEL - Veiculo {placa_selecionada} disponivel de {data_inicio.strftime('%d/%m/%Y')} ate {data_fim.strftime('%d/%m/%Y')}")
-264    else:
-265        if reserva_conflito is not None:
-266            st.error(f"INDISPONIVEL - Veiculo {placa_selecionada} ja reservado no periodo por: {reserva_conflito['condutor']} (Destino: {reserva_conflito['destino']})")
-267    botao_habilitado = disponivel and destino.strip() != "" and centro_custo.strip() != "" and hora_saida is not None and hora_retorno is not None
-268    if st.button("Confirmar Reserva", type="primary", use_container_width=True, disabled=not botao_habilitado):
+  if disponivel:
+        st.success(f"DISPONIVEL - Veiculo {placa_selecionada} disponivel de {data_inicio.strftime('%d/%m/%Y')} ate {data_fim.strftime('%d/%m/%Y')}")
+    else:
+        if reserva_conflito is not None:
+            st.error(f"INDISPONIVEL - Veiculo {placa_selecionada} ja reservado no periodo por: {reserva_conflito['condutor']} (Destino: {reserva_conflito['destino']})")
+    botao_habilitado = disponivel and destino.strip() != "" and centro_custo.strip() != "" and hora_saida is not None and hora_retorno is not None
+    if st.button("Confirmar Reserva", type="primary", use_container_width=True, disabled=not botao_habilitado):
         try:
             salvar_reserva(placa_selecionada, modelo_selecionado, condutor, condutor_logado, destino.strip(), centro_custo.strip(), data_inicio, data_fim, hora_saida.strftime("%H:%M"), hora_retorno.strftime("%H:%M"))
             st.success(f"Reserva confirmada! Veiculo: {placa_selecionada} | Condutor: {condutor} | Reservado por: {condutor_logado} | Destino: {destino} | CC: {centro_custo} | Periodo: {data_inicio.strftime('%d/%m/%Y')} ate {data_fim.strftime('%d/%m/%Y')} | Horario: {hora_saida.strftime('%H:%M')} as {hora_retorno.strftime('%H:%M')}")
