@@ -220,6 +220,7 @@ elif pagina == "Nova Reserva":
         placa_selecionada = veiculo_selecionado.split(" - ")[0]
         modelo_selecionado = VEICULOS[placa_selecionada]["modelo"]
         destino = st.text_input("Destino", placeholder="Ex: Matao, Ribeirao Preto")
+        centro_custo = st.text_input("Centro de Custo", placeholder="Ex: BR55CNP1AB")
     with col2:
         data_inicio = st.date_input("Data Inicio", min_value=date.today(), value=date.today())
         data_fim = st.date_input("Data Fim", min_value=data_inicio, value=data_inicio)
