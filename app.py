@@ -7,8 +7,8 @@ st.sidebar.markdown('<div style="background-color: #00a651; padding: 10px; borde
 
 st.set_page_config(page_title="Reserva de Veiculos", page_icon="car", layout="wide")
 
-SMARTSHEET_TOKEN = st.secrets["2g2PXCKnWbqmN8SHjbxA6MlxsmokO1spK6Oek"]
-SHEET_ID = int(st.secrets["2989343672061828"])
+SMARTSHEET_TOKEN = st.secrets["SMARTSHEET_TOKEN"]
+SHEET_ID = int(st.secrets["SHEET_ID"])
 
 ss_client = smartsheet.Smartsheet(SMARTSHEET_TOKEN)
 ss_client.errors_as_exceptions(True)
