@@ -5,45 +5,40 @@ import smartsheet
 
 st.set_page_config(page_title="Reserva de Veiculos", page_icon="car", layout="wide")
 
-SMARTSHEET_TOKEN = st.secrets["SMARTSHEET_TOKEN"]
-SHEET_ID = int(st.secrets["SHEET_ID"])
+SMARTSHEET_TOKEN = "2g2PXCKnWbqmN8SHjbxA6MlxsmokO1spK6Oek"
+SHEET_ID = 2989343672061828
+SHEET_CONDUTORES_ID = 639574043742084
+SHEET_VEICULOS_ID = 8521380734652292
 
 ss_client = smartsheet.Smartsheet(SMARTSHEET_TOKEN)
 ss_client.errors_as_exceptions(True)
 
-VEICULOS = {
-    "SHI-6J15": {"modelo": "Fiat Toro", "cor": "Prata"},
-    "SHI-6J17": {"modelo": "Fiat Toro", "cor": "Prata"},
-}
+def carregar_condutores():
+    sheet = ss_client.Sheets.get_sheet(SHEET_CONDUTORES_ID)
+    colunas = {col.id: col.title for col in sheet.columns}
+    nomes = []
+    for row in sheet.rows:
+        for cell in row.cells:
+            col_nome = colunas.get(cell.column_id, "")
+            if col_nome == "Nome" and cell.value:
+                nomes.append(cell.value)
+    return sorted(nomes)
 
-CONDUTORES = [
-    "Jéssica Gonçalves",
-    "Josiane Macedo",
-    "Adriano César Ferreira",
-    "Ana Paula Maria de Sousa",
-    "André Martins Tomasin",
-    "Bruno Barroso dos Santos",
-    "Cloves Barbosa Costa",
-    "Dionizio Honório de Oliveira Neto",
-    "Edmundo Teixeira",
-    "Gabriela de Mello",
-    "Gabriela Magossi Inácio",
-    "Luciano Aparecido Zuin",
-    "Marcelo Jacintho Pereira Castro",
-    "Matheus Henrique Grandim",
-    "Murilo Thiago Manginelli",
-    "Paulo Henrique da Silva Manzi",
-    "Paulo Henrique Ronconi",
-    "Vanessa de Sousa Costa",
-    "Gustavo Madalena",
-    "Cristiano de Paula Silva",
-    "Giovana Ribeiro Barsotti",
-    "Daniel Daré",
-    "Thiago Adriano Tomaz",
-    "Eduardo Tomaz Terence",
-    "Isabela Martins",
-    "Leonardo Cunha de Araújo",
-]
+def carregar_veiculos():
+    sheet = ss_client.Sheets.get_sheet(SHEET_VEICULOS_ID)
+    colunas = {col.id: col.title for col in sheet.columns}
+    veiculos = {}
+    for row in sheet.rows:
+        registro = {}
+        for cell in row.cells:
+            col_nome = colunas.get(cell.column_id, "")
+            registro[col_nome] = cell.value
+        if registro.get("Placa"):
+            veiculos[registro["Placa"]] = {
+                "modelo": registro.get("Modelo", ""),
+                "cor": registro.get("Cor", "")
+            }
+    return veiculos
 
 def obter_colunas():
     sheet = ss_client.Sheets.get_sheet(SHEET_ID)
@@ -129,10 +124,10 @@ def verificar_disponibilidade(df, placa, data_inicio, data_fim, hora_saida=None,
                     return False, row
     return True, None
 
-def contar_disponibilidades(df_reservas):
+def contar_disponibilidades(df_reservas, veiculos):
     hoje = date.today()
     if df_reservas.empty:
-        return len(VEICULOS)
+        return len(veiculos)
     reservados_hoje = []
     for idx, row in df_reservas.iterrows():
         if row["status"] == "Ativa":
@@ -142,7 +137,7 @@ def contar_disponibilidades(df_reservas):
                 fim = inicio
             if inicio <= hoje <= fim:
                 reservados_hoje.append(row["placa"])
-    return max(0, len(VEICULOS) - len(set(reservados_hoje)))
+    return max(0, len(veiculos) - len(set(reservados_hoje)))
 
 def contar_condutores_ativos(df_reservas):
     hoje = date.today()
@@ -159,10 +154,12 @@ def contar_reservas_ativas(df_reservas):
     return len(ativas)
 
 try:
+    CONDUTORES = carregar_condutores()
+    VEICULOS = carregar_veiculos()
     df_reservas = carregar_reservas()
 except Exception as e:
     st.error(f"Erro ao conectar com Smartsheet: {e}")
-    st.info("Verifique o token e o ID da planilha.")
+    st.info("Verifique o token e os IDs das planilhas.")
     st.stop()
 
 st.markdown("""
@@ -193,7 +190,7 @@ if pagina == "Home":
     with col1:
         st.markdown(f'<div class="card card-azul"><h2>{len(VEICULOS)}</h2><p>Veiculos</p></div>', unsafe_allow_html=True)
     with col2:
-        st.markdown(f'<div class="card card-verde"><h2>{contar_disponibilidades(df_reservas)}</h2><p>Disponiveis</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card card-verde"><h2>{contar_disponibilidades(df_reservas, VEICULOS)}</h2><p>Disponiveis</p></div>', unsafe_allow_html=True)
     with col3:
         st.markdown(f'<div class="card card-laranja"><h2>{contar_reservas_ativas(df_reservas)}</h2><p>Reservas ativas</p></div>', unsafe_allow_html=True)
     with col4:
@@ -227,7 +224,7 @@ elif pagina == "Nova Reserva":
         veiculo_selecionado = st.selectbox("Selecione o Veiculo", opcoes_veiculos)
         placa_selecionada = veiculo_selecionado.split(" - ")[0]
         modelo_selecionado = VEICULOS[placa_selecionada]["modelo"]
-        condutor = st.text_input("Condutor (quem vai usar o veiculo)", placeholder="Nome de quem vai usar")
+        condutor = st.selectbox("Condutor (quem vai usar o veiculo)", CONDUTORES)
         destino = st.text_input("Destino", placeholder="Ex: Matao, Ribeirao Preto")
         centro_custo = st.text_input("Centro de Custo", placeholder="Ex: 1234-5678")
     with col2:
@@ -247,10 +244,10 @@ elif pagina == "Nova Reserva":
         st.success(f"DISPONIVEL - Veiculo {placa_selecionada} disponivel de {data_inicio.strftime('%d/%m/%Y')} ate {data_fim.strftime('%d/%m/%Y')}")
     else:
         st.error(f"INDISPONIVEL - Veiculo {placa_selecionada} ja reservado no periodo por: {reserva_conflito['condutor']} (Destino: {reserva_conflito['destino']})")
-    botao_habilitado = disponivel and condutor.strip() != "" and destino.strip() != "" and centro_custo.strip() != "" and hora_saida is not None and hora_retorno is not None
+    botao_habilitado = disponivel and destino.strip() != "" and centro_custo.strip() != "" and hora_saida is not None and hora_retorno is not None
     if st.button("Confirmar Reserva", type="primary", use_container_width=True, disabled=not botao_habilitado):
         try:
-            salvar_reserva(placa_selecionada, modelo_selecionado, condutor.strip(), condutor_logado, destino.strip(), centro_custo.strip(), data_inicio, data_fim, hora_saida.strftime("%H:%M"), hora_retorno.strftime("%H:%M"))
+            salvar_reserva(placa_selecionada, modelo_selecionado, condutor, condutor_logado, destino.strip(), centro_custo.strip(), data_inicio, data_fim, hora_saida.strftime("%H:%M"), hora_retorno.strftime("%H:%M"))
             st.success(f"Reserva confirmada! Veiculo: {placa_selecionada} | Condutor: {condutor} | Reservado por: {condutor_logado} | Destino: {destino} | CC: {centro_custo} | Periodo: {data_inicio.strftime('%d/%m/%Y')} ate {data_fim.strftime('%d/%m/%Y')} | Horario: {hora_saida.strftime('%H:%M')} as {hora_retorno.strftime('%H:%M')}")
             st.balloons()
         except Exception as e:
