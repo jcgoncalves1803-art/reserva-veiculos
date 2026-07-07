@@ -262,7 +262,9 @@ elif pagina == "Nova Reserva":
     if disponivel:
         st.success(f"DISPONIVEL - Veiculo {placa_selecionada} disponivel de {data_inicio.strftime('%d/%m/%Y')} ate {data_fim.strftime('%d/%m/%Y')}")
     else:
-        st.error(f"INDISPONIVEL - Veiculo {placa_selecionada} ja reservado no periodo por: {reserva_conflito['condutor']} (Destino: {reserva_conflito['destino']})")
+            else:
+        if reserva_conflito is not None:
+            st.error(f"INDISPONIVEL - Veiculo {placa_selecionada} ja reservado no periodo por: {reserva_conflito['condutor']} (Destino: {reserva_conflito['destino']})")
     botao_habilitado = disponivel and destino.strip() != "" and centro_custo.strip() != "" and hora_saida is not None and hora_retorno is not None
     if st.button("Confirmar Reserva", type="primary", use_container_width=True, disabled=not botao_habilitado):
         try:
