@@ -83,7 +83,7 @@ def carregar_reservas():
     })
     return df
 
-def salvar_reserva(placa, modelo, condutor, destino, data_inicio, data_fim, hora_saida, hora_retorno):
+def salvar_reserva(placa, modelo, condutor, destino, centro_custo, data_inicio, data_fim, hora_saida, hora_retorno):
     colunas = obter_colunas()
     nova_linha = smartsheet.models.Row()
     nova_linha.to_top = True
@@ -91,6 +91,7 @@ def salvar_reserva(placa, modelo, condutor, destino, data_inicio, data_fim, hora
     nova_linha.cells.append({"column_id": colunas["Veiculo"], "value": modelo})
     nova_linha.cells.append({"column_id": colunas["Condutor"], "value": condutor})
     nova_linha.cells.append({"column_id": colunas["Destino"], "value": destino})
+    nova_linha.cells.append({"column_id": colunas["Centro de Custo"], "value": centro_custo})
     nova_linha.cells.append({"column_id": colunas["Data Reserva"], "value": data_inicio.isoformat()})
     nova_linha.cells.append({"column_id": colunas["Data Fim"], "value": data_fim.isoformat()})
     nova_linha.cells.append({"column_id": colunas["Hora Saida"], "value": hora_saida})
@@ -241,7 +242,7 @@ elif pagina == "Nova Reserva":
     botao_habilitado = disponivel and destino.strip() != "" and centro_custo.strip() != "" and hora_saida is not None and hora_retorno is not None
     if st.button("Confirmar Reserva", type="primary", use_container_width=True, disabled=not botao_habilitado):
         try:
-            salvar_reserva(placa_selecionada, modelo_selecionado, condutor_logado, destino.strip(), data_inicio, data_fim, hora_saida.strftime("%H:%M"), hora_retorno.strftime("%H:%M"))
+            salvar_reserva(placa_selecionada, modelo_selecionado, condutor_logado, destino.strip(), centro_custo.strip(), data_inicio, data_fim, hora_saida.strftime("%H:%M"), hora_retorno.strftime("%H:%M"))
             st.success(f"Reserva confirmada! Veiculo: {placa_selecionada} - {modelo_selecionado} | Condutor: {condutor_logado} | Destino: {destino} | Periodo: {data_inicio.strftime('%d/%m/%Y')} ate {data_fim.strftime('%d/%m/%Y')} | Horario: {hora_saida.strftime('%H:%M')} as {hora_retorno.strftime('%H:%M')}")
             st.balloons()
         except Exception as e:
