@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime, date, time, timedelta
 import smartsheet
 
-st.sidebar.markdown('<div style="background-color: #00a651; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px;"><span style="color: white; font-size: 20px; font-weight: bold;">SYNGENTA</span></div>', unsafe_allow_html=True)
+st.sidebar.image("logo.png", width=180)
 
 st.set_page_config(page_title="Reserva de Veiculos", page_icon="car", layout="wide")
 
