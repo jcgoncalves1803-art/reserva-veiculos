@@ -419,7 +419,17 @@ elif pagina == "Calendário":
         cores = {"SHI-6J15":"#5B7F12", "SHI-6J17":"#A92D76", "UAE-7E13":"#2878B5", "UVH-2D53":"#D97A18"}
         st.markdown("""<style>
         .legenda{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}.tag{color:#fff;padding:5px 10px;border-radius:5px;font-size:13px}
-        .cal{display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid #ddd;border-left:1px solid #ddd}.cab{background:#f4f5f6;text-align:center;font-weight:bold;padding:8px 4px;.cab{background:#f4f5f6;text-align:center;font-weight:bold;padding:8px 4px;font-size:13px;border-right:1px solid #ddd;border-bottom:1px solid #ddd}.dia{min-height:95px;padding:5px;border-right:1px solid #ddd;border-bottom:1px solid #ddd}.hoje{background:#eaf7ee}.num{font-weight:bold;margin-bottom:5px}.evento{color:#fff;padding:3px 5px;border-radius:4px;margin:2px 0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .cal{display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid #ddd;border-left:1px solid #ddd}.cab{background:#f4f5f6;text-align:center;font-weight:bold;padding:8px 4px;.cab{background:#f4f5f6;text-align:center;font-weight:bold;padding:8px 4px;font-size:13px;border-right:1px solid #ddd;border-bottom:1px solid #ddd}.dia{min-height:110px;padding:5px;border-right:1px solid #ddd;border-bottom:1px solid #ddd}.hoje{background:#eaf7ee}.num{font-weight:bold;margin-bottom:5px}.evento{
+    color:#fff;
+    padding:3px 5px;
+    border-radius:4px;
+    margin:2px 0;
+    font-size:10px;
+    line-height:12px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
         </style>""", unsafe_allow_html=True)
         legenda = '<div class="legenda">' + ''.join(f'<span class="tag" style="background:{cor}">{p} - Fiat Toro</span>' for p, cor in cores.items()) + '</div>'
         st.markdown(legenda, unsafe_allow_html=True)
