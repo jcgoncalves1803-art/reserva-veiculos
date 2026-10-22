@@ -1,107 +1,148 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date, time, timedelta
-import calendar
+from datetime import datetime, date
 import smartsheet
+import calendar
 
-st.set_page_config(page_title="Reserva de Veiculos", page_icon="car", layout="wide")
+st.set_page_config(
+    page_title="Reserva de Veículos",
+    page_icon="🚗",
+    layout="wide"
+)
 
-try:
-    SMARTSHEET_TOKEN = st.secrets["SMARTSHEET_TOKEN"]
-    SHEET_ID = int(st.secrets["SHEET_ID"])
-except:
-    SMARTSHEET_TOKEN = "2g2PXCKnWbqmN8SHjbxA6MlxsmokO1spK6Oek"
-    SHEET_ID = 2989343672061828
-SHEET_CONDUTORES_ID = 639574043742084
+SMARTSHEET_TOKEN = "2g2PXCKnWbqmN8SHjbxA6MlxsmokO1spK6Oek"
+SHEET_ID = 2989343672061828
+
 SHEET_VEICULOS_ID = 8521380734652292
+SHEET_CONDUTORES_ID = 639574043742084
 
 ss_client = smartsheet.Smartsheet(SMARTSHEET_TOKEN)
 ss_client.errors_as_exceptions(True)
 
-def carregar_condutores():
-    sheet = ss_client.Sheets.get_sheet(SHEET_CONDUTORES_ID)
-    colunas = {col.id: col.title for col in sheet.columns}
-    nomes = []
-    for row in sheet.rows:
-        for cell in row.cells:
-            col_nome = colunas.get(cell.column_id, "")
-            if col_nome == "Nome" and cell.value:
-                nomes.append(cell.value)
-    return sorted(nomes)
+def carregar_cadastro(sheet_id):
+    sheet = ss_client.Sheets.get_sheet(sheet_id)
+    nomes_colunas = {col.id: col.title for col in sheet.columns}
+    dados = []
 
-def carregar_veiculos():
-    sheet = ss_client.Sheets.get_sheet(SHEET_VEICULOS_ID)
-    colunas = {col.id: col.title for col in sheet.columns}
-    veiculos = {}
     for row in sheet.rows:
         registro = {}
         for cell in row.cells:
-            col_nome = colunas.get(cell.column_id, "")
-            registro[col_nome] = cell.value
-        if registro.get("Placa"):
-            veiculos[registro["Placa"]] = {
-                "modelo": registro.get("Modelo", ""),
-                "cor": registro.get("Cor", "")
-            }
-    return veiculos
+            registro[nomes_colunas.get(cell.column_id, "")] = cell.value
+        dados.append(registro)
+
+    return pd.DataFrame(dados)
+
+
+def esta_ativo(valor):
+    return str(valor).strip().casefold() in {"sim", "s", "yes", "true", "1"}
+
+
+def carregar_veiculos_ativos():
+    df = carregar_cadastro(SHEET_VEICULOS_ID)
+    obrigatorias = {"Placa", "Modelo", "Cor", "Ativo"}
+
+    if not obrigatorias.issubset(df.columns):
+        faltantes = ", ".join(sorted(obrigatorias - set(df.columns)))
+        raise ValueError(f"Cadastro de Veículos: coluna(s) ausente(s): {faltantes}.")
+
+    df = df[df["Ativo"].apply(esta_ativo)].copy()
+    df = df.dropna(subset=["Placa", "Modelo"])
+
+    return {
+        str(row["Placa"]).strip(): {
+            "modelo": str(row["Modelo"]).strip(),
+            "cor": str(row["Cor"]).strip() if pd.notna(row["Cor"]) else ""
+        }
+        for _, row in df.iterrows()
+    }
+
+
+def carregar_condutores_ativos():
+    df = carregar_cadastro(SHEET_CONDUTORES_ID)
+    obrigatorias = {"Nome", "Ativo"}
+
+    if not obrigatorias.issubset(df.columns):
+        faltantes = ", ".join(sorted(obrigatorias - set(df.columns)))
+        raise ValueError(f"Cadastro de Condutores: coluna(s) ausente(s): {faltantes}.")
+
+    df = df[df["Ativo"].apply(esta_ativo)].copy()
+    condutores = df["Nome"].dropna().astype(str).str.strip()
+    return sorted([nome for nome in condutores.unique() if nome])
+
 
 def obter_colunas():
     sheet = ss_client.Sheets.get_sheet(SHEET_ID)
-    colunas = {}
-    for col in sheet.columns:
-        colunas[col.title] = col.id
-    return colunas
+    return {col.title: col.id for col in sheet.columns}
+
 
 def carregar_reservas():
     sheet = ss_client.Sheets.get_sheet(SHEET_ID)
-    colunas = {col.id: col.title for col in sheet.columns}
+    nomes_colunas = {col.id: col.title for col in sheet.columns}
     dados = []
+
     for row in sheet.rows:
         registro = {"row_id": row.id}
         for cell in row.cells:
-            col_nome = colunas.get(cell.column_id, "")
-            registro[col_nome] = cell.value
+            registro[nomes_colunas.get(cell.column_id, "")] = cell.value
         dados.append(registro)
+
     df = pd.DataFrame(dados)
+
     if df.empty:
-        return pd.DataFrame(columns=["placa", "modelo", "condutor", "reservado_por", "destino", "centro_custo", "data_reserva", "data_fim", "hora_saida", "hora_retorno", "status", "data_registro", "row_id"])
-    if "Data Reserva" in df.columns:
-        df["Data Reserva"] = pd.to_datetime(df["Data Reserva"], errors="coerce").dt.date
-    if "Data Fim" in df.columns:
-        df["Data Fim"] = pd.to_datetime(df["Data Fim"], errors="coerce").dt.date
-    df = df.rename(columns={
+        return pd.DataFrame(columns=[
+            "placa", "modelo", "condutor", "destino", "centro_custo",
+            "data_inicio", "data_fim", "hora_saida", "hora_retorno",
+            "status", "data_registro", "row_id"
+        ])
+
+    # Data Reserva é mantida como compatibilidade para reservas antigas.
+    if "Data Inicio" not in df.columns and "Data Reserva" in df.columns:
+        df["Data Inicio"] = df["Data Reserva"]
+    if "Data Fim" not in df.columns:
+        df["Data Fim"] = df.get("Data Inicio")
+    if "Centro de Custo" not in df.columns:
+        df["Centro de Custo"] = ""
+
+    for coluna in ["Data Inicio", "Data Fim"]:
+        df[coluna] = pd.to_datetime(df[coluna], errors="coerce").dt.date
+
+    return df.rename(columns={
         "Placa": "placa",
         "Veiculo": "modelo",
         "Condutor": "condutor",
-        "Reservado Por": "reservado_por",
         "Destino": "destino",
         "Centro de Custo": "centro_custo",
-        "Data Reserva": "data_reserva",
+        "Data Inicio": "data_inicio",
         "Data Fim": "data_fim",
         "Hora Saida": "hora_saida",
         "Hora Retorno": "hora_retorno",
         "Status": "status",
         "Data Registro": "data_registro"
     })
-    return df
 
-def salvar_reserva(placa, modelo, condutor, reservado_por, destino, centro_custo, data_inicio, data_fim, hora_saida, hora_retorno):
+
+def salvar_reserva(placa, modelo, condutor, destino, centro_custo, data_inicio, data_fim, hora_saida, hora_retorno):
     colunas = obter_colunas()
     nova_linha = smartsheet.models.Row()
     nova_linha.to_top = True
+
     nova_linha.cells.append({"column_id": colunas["Placa"], "value": placa})
     nova_linha.cells.append({"column_id": colunas["Veiculo"], "value": modelo})
     nova_linha.cells.append({"column_id": colunas["Condutor"], "value": condutor})
-    nova_linha.cells.append({"column_id": colunas["Reservado Por"], "value": reservado_por})
     nova_linha.cells.append({"column_id": colunas["Destino"], "value": destino})
     nova_linha.cells.append({"column_id": colunas["Centro de Custo"], "value": centro_custo})
-    nova_linha.cells.append({"column_id": colunas["Data Reserva"], "value": data_inicio.isoformat()})
+    nova_linha.cells.append({"column_id": colunas["Data Inicio"], "value": data_inicio.isoformat()})
     nova_linha.cells.append({"column_id": colunas["Data Fim"], "value": data_fim.isoformat()})
     nova_linha.cells.append({"column_id": colunas["Hora Saida"], "value": hora_saida})
     nova_linha.cells.append({"column_id": colunas["Hora Retorno"], "value": hora_retorno})
     nova_linha.cells.append({"column_id": colunas["Status"], "value": "Ativa"})
-    nova_linha.cells.append({"column_id": colunas["Data Registro"], "value": datetime.now().strftime("%Y-%m-%d %H:%M")})
+    nova_linha.cells.append({
+        "column_id": colunas["Data Registro"],
+        "value": datetime.now().strftime("%Y-%m-%d %H:%M")
+    })
+
     ss_client.Sheets.add_rows(SHEET_ID, [nova_linha])
+
 
 def cancelar_reserva(row_id):
     colunas = obter_colunas()
@@ -110,81 +151,107 @@ def cancelar_reserva(row_id):
     linha.cells.append({"column_id": colunas["Status"], "value": "Cancelada"})
     ss_client.Sheets.update_rows(SHEET_ID, [linha])
 
-def verificar_disponibilidade(df, placa, data_inicio, data_fim, hora_saida=None, hora_retorno=None):
+
+def verificar_disponibilidade(df, placa, data_inicio, data_fim):
+    """Retorna conflito se algum período ativo se sobrepõe ao solicitado."""
     if df.empty:
         return True, None
-    for idx, row in df.iterrows():
-        if row["placa"] == placa and row["status"] == "Ativa":
-            reserva_inicio = row["data_reserva"]
-            reserva_fim = row.get("data_fim", reserva_inicio)
-            if reserva_fim is None or pd.isna(reserva_fim):
-                reserva_fim = reserva_inicio
-            if data_inicio <= reserva_fim and data_fim >= reserva_inicio:
-                if hora_saida is not None and hora_retorno is not None:
-                    reserva_hora_saida = row.get("hora_saida", "00:00")
-                    reserva_hora_retorno = row.get("hora_retorno", "23:59")
-                    if hora_saida < reserva_hora_retorno and hora_retorno > reserva_hora_saida:
-                        return False, row
-                else:
-                    return False, row
-    return True, None
 
-def contar_disponibilidades(df_reservas, veiculos):
-    hoje = date.today()
-    if df_reservas.empty:
-        return len(veiculos)
-    reservados_hoje = []
-    for idx, row in df_reservas.iterrows():
-        if row["status"] == "Ativa":
-            inicio = row["data_reserva"]
-            fim = row.get("data_fim", inicio)
-            if fim is None or pd.isna(fim):
-                fim = inicio
-            if inicio <= hoje <= fim:
-                reservados_hoje.append(row["placa"])
-    return max(0, len(veiculos) - len(set(reservados_hoje)))
+    conflito = df[
+        (df["placa"] == placa) &
+        (df["status"] == "Ativa") &
+        (df["data_inicio"] <= data_fim) &
+        (df["data_fim"] >= data_inicio)
+    ]
 
-def contar_condutores_ativos(df_reservas):
-    hoje = date.today()
-    if df_reservas.empty:
+    return (False, conflito.iloc[0]) if not conflito.empty else (True, None)
+
+
+def contar_disponibilidades(df):
+    if df.empty:
+        return len(VEICULOS)
+
+    reservados = df[
+        (((df["data_inicio"] <= date.today()) & (df["data_fim"] >= date.today()))) &
+        (df["status"] == "Ativa")
+    ]["placa"].unique()
+
+    return len(VEICULOS) - len([placa for placa in reservados if placa in VEICULOS])
+
+
+def contar_reservas_ativas(df):
+    if df.empty:
         return 0
-    ativos = df_reservas[(df_reservas["status"] == "Ativa") & (df_reservas["data_reserva"] >= hoje)]
+    return len(df[(df["status"] == "Ativa") & (df["data_fim"] >= date.today())])
+
+
+def contar_condutores_ativos(df):
+    if df.empty:
+        return 0
+    ativos = df[(df["status"] == "Ativa") & (df["data_fim"] >= date.today())]
     return ativos["condutor"].nunique() if not ativos.empty else 0
 
-def contar_reservas_ativas(df_reservas):
-    hoje = date.today()
-    if df_reservas.empty:
-        return 0
-    ativas = df_reservas[(df_reservas["status"] == "Ativa") & (df_reservas["data_reserva"] >= hoje)]
-    return len(ativas)
 
 try:
-    CONDUTORES = carregar_condutores()
-    VEICULOS = carregar_veiculos()
+    VEICULOS = carregar_veiculos_ativos()
+    CONDUTORES = carregar_condutores_ativos()
     df_reservas = carregar_reservas()
+
+    if not VEICULOS:
+        st.error("Não há veículos ativos no Cadastro de Veículos.")
+        st.stop()
+
+    if not CONDUTORES:
+        st.error("Não há condutores ativos no Cadastro de Condutores.")
+        st.stop()
+
 except Exception as e:
-    st.error(f"Erro ao conectar com Smartsheet: {e}")
-    st.info("Verifique o token e os IDs das planilhas.")
+    st.error(f"Erro ao carregar os cadastros ou as reservas na Smartsheet: {e}")
+    st.info("Confira os IDs das planilhas e os nomes das colunas: Placa, Modelo, Cor, Ativo; e Nome, Ativo.")
     st.stop()
 
 st.markdown("""
 <style>
-    .card {padding: 20px; border-radius: 12px; text-align: center; color: white; margin-bottom: 10px;}
-    .card-azul {background: linear-gradient(135deg, #00A0BE 0%, #00A0BE 100%);}
-    .card-verde {background: linear-gradient(135deg, #5F7800 0%, #5F7800 100%);}
-    .card-laranja {background: linear-gradient(135deg, #AB2E78 0%, #AB2E78 100%);}
-    .card-cinza {background: linear-gradient(135deg, #334C56 0%, #334C56 100%);}
-    .card h2 {margin: 0; font-size: 2.5em;}
-    .card p {margin: 5px 0 0 0; font-size: 1.1em; opacity: 0.9;}
+.card {padding:20px; border-radius:12px; text-align:center; color:white; margin-bottom:10px;}
+.card-azul {background:linear-gradient(135deg,#667eea,#764ba2);}
+.card-verde {background:linear-gradient(135deg,#11998e,#38ef7d);}
+.card-laranja {background:linear-gradient(135deg,#f093fb,#f5576c);}
+.card-cinza {background:linear-gradient(135deg,#4b6cb7,#182848);}
+.card h2 {margin:0; font-size:2.5em;}
+.card p {margin:5px 0 0; font-size:1.1em; opacity:.9;}
 </style>
 """, unsafe_allow_html=True)
 
-st.sidebar.image("logo.png", width=180)
-st.sidebar.title("Reserva de Veiculos")
+try:
+    st.sidebar.image("logo.png", use_container_width=True)
+except Exception:
+    st.sidebar.caption("Logo não encontrada.")
+
+st.sidebar.title("Reserva de Veículos")
 st.sidebar.markdown("---")
-condutor_logado = st.sidebar.selectbox("Quem esta usando:", CONDUTORES)
+st.sidebar.markdown("**Quem está usando:**")
+usuario_atual = st.sidebar.selectbox("Usuário", CONDUTORES, label_visibility="collapsed")
 st.sidebar.markdown("---")
-pagina = st.sidebar.radio("Navegacao", ["Home", "Nova Reserva", "Reservas Ativas", "Cancelar Reserva", "Historico", "Calendario"])
+
+PAGINAS = [
+    "Home",
+    "Nova Reserva",
+    "Reservas Ativas",
+    "Cancelar Reserva",
+    "Histórico",
+    "Calendário"
+]
+
+pagina_link = st.query_params.get("pagina", "Home")
+
+if pagina_link not in PAGINAS:
+    pagina_link = "Home"
+
+pagina = st.sidebar.radio(
+    "Navegação",
+    PAGINAS,
+    index=PAGINAS.index(pagina_link)
+)
 st.sidebar.markdown("---")
 st.sidebar.caption("Syngenta - Parent Seeds Operations")
 
@@ -193,277 +260,180 @@ if pagina == "Home":
     st.markdown("---")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.markdown(f'<div class="card card-azul"><h2>{len(VEICULOS)}</h2><p>Veiculos</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card card-azul"><h2>{len(VEICULOS)}</h2><p>Veículos</p></div>', unsafe_allow_html=True)
     with col2:
-        st.markdown(f'<div class="card card-verde"><h2>{contar_disponibilidades(df_reservas, VEICULOS)}</h2><p>Disponiveis</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card card-verde"><h2>{contar_disponibilidades(df_reservas)}</h2><p>Disponíveis</p></div>', unsafe_allow_html=True)
     with col3:
         st.markdown(f'<div class="card card-laranja"><h2>{contar_reservas_ativas(df_reservas)}</h2><p>Reservas ativas</p></div>', unsafe_allow_html=True)
     with col4:
         st.markdown(f'<div class="card card-cinza"><h2>{contar_condutores_ativos(df_reservas)}</h2><p>Condutores</p></div>', unsafe_allow_html=True)
+
     st.markdown("---")
-    st.subheader("Proximas Reservas")
-    if df_reservas.empty:
+    st.subheader("Próximas Reservas")
+    df_proximas = df_reservas[(df_reservas["status"] == "Ativa") & (df_reservas["data_fim"] >= date.today())].sort_values("data_inicio").head(10)
+    if df_proximas.empty:
         st.info("Nenhuma reserva ativa no momento.")
     else:
-        df_proximas = df_reservas[(df_reservas["status"] == "Ativa") & (df_reservas["data_reserva"] >= date.today())].sort_values("data_reserva").head(10)
-        if df_proximas.empty:
-            st.info("Nenhuma reserva ativa no momento.")
-        else:
-            colunas_exibir = ["placa", "modelo", "condutor", "destino", "data_reserva", "data_fim", "hora_saida", "hora_retorno"]
-            colunas_exibir = [c for c in colunas_exibir if c in df_proximas.columns]
-            df_exibir = df_proximas[colunas_exibir].copy()
-            df_exibir.columns = ["Placa", "Modelo", "Condutor", "Destino", "Data Inicio", "Data Fim", "Saida", "Retorno"][:len(colunas_exibir)]
-            if "Data Inicio" in df_exibir.columns:
-                df_exibir["Data Inicio"] = pd.to_datetime(df_exibir["Data Inicio"]).dt.strftime("%d/%m/%Y")
-            if "Data Fim" in df_exibir.columns:
-                df_exibir["Data Fim"] = pd.to_datetime(df_exibir["Data Fim"]).dt.strftime("%d/%m/%Y")
-            st.dataframe(df_exibir, use_container_width=True, hide_index=True)
+        exibir = df_proximas[["placa", "modelo", "condutor", "destino", "data_inicio", "data_fim", "hora_saida", "hora_retorno"]].copy()
+        exibir.columns = ["Placa", "Modelo", "Condutor", "Destino", "Data de Início", "Data de Fim", "Saída", "Retorno"]
+        exibir["Data de Início"] = pd.to_datetime(exibir["Data de Início"]).dt.strftime("%d/%m/%Y")
+        exibir["Data de Fim"] = pd.to_datetime(exibir["Data de Fim"]).dt.strftime("%d/%m/%Y")
+        st.dataframe(exibir, use_container_width=True, hide_index=True)
 
 elif pagina == "Nova Reserva":
     st.title("Nova Reserva")
-    st.markdown(f"**Reservado por:** {condutor_logado}")
     st.markdown("---")
     col1, col2 = st.columns(2)
+
     with col1:
-        opcoes_veiculos = [f"{placa} - {info['modelo']} ({info['cor']})" for placa, info in VEICULOS.items()]
-        veiculo_selecionado = st.selectbox("Selecione o Veiculo", opcoes_veiculos)
+        opcoes = [f"{placa} - {info['modelo']} ({info['cor']})" for placa, info in VEICULOS.items()]
+        veiculo_selecionado = st.selectbox("Selecione o Veículo", opcoes)
         placa_selecionada = veiculo_selecionado.split(" - ")[0]
         modelo_selecionado = VEICULOS[placa_selecionada]["modelo"]
-        condutor = st.selectbox("Condutor (quem vai usar o veiculo)", CONDUTORES)
-        destino = st.text_input("Destino", placeholder="Ex: Matao, Ribeirao Preto")
-        centro_custo = st.text_input("Centro de Custo", placeholder="Ex: 1234-5678")
+        condutor = st.selectbox("Nome do Condutor", CONDUTORES, index=CONDUTORES.index(usuario_atual))
+        destino = st.text_input("Destino", placeholder="Ex.: Matão, Ribeirão Preto")
+        centro_custo = st.text_input("Centro de Custo", placeholder="Ex.: 1234-5678")
+
     with col2:
-        data_inicio = st.date_input("Data Inicio", min_value=date.today(), value=date.today())
-        data_fim = st.date_input("Data Fim", min_value=data_inicio, value=data_inicio)
-        st.caption(f"Periodo: {data_inicio.strftime('%d/%m/%Y')} ate {data_fim.strftime('%d/%m/%Y')}")
-        col_h1, col_h2 = st.columns(2)
-        with col_h1:
-            hora_saida = st.time_input("Hora de Saida", value=None)
-        with col_h2:
+        data_inicio = st.date_input("Data de Início", min_value=date.today(), value=date.today())
+        data_fim = st.date_input("Data de Fim", min_value=data_inicio, value=data_inicio)
+        st.caption(f"Período: {data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}")
+        h1, h2 = st.columns(2)
+        with h1:
+            hora_saida = st.time_input("Hora de Saída", value=None)
+        with h2:
             hora_retorno = st.time_input("Hora de Retorno", value=None)
-    st.markdown("---")
-    hora_saida_str = hora_saida.strftime("%H:%M") if hora_saida else None
-    hora_retorno_str = hora_retorno.strftime("%H:%M") if hora_retorno else None
-    disponivel, reserva_conflito = verificar_disponibilidade(df_reservas, placa_selecionada, data_inicio, data_fim, hora_saida_str, hora_retorno_str)
+
+    disponivel, conflito = verificar_disponibilidade(df_reservas, placa_selecionada, data_inicio, data_fim)
     if disponivel:
-        veiculos_reservados_periodo = set()
-        for idx, row in df_reservas.iterrows():
-            if row["status"] == "Ativa" and row["placa"] != placa_selecionada:
-                reserva_inicio = row["data_reserva"]
-                reserva_fim = row.get("data_fim", reserva_inicio)
-                if reserva_fim is None or pd.isna(reserva_fim):
-                    reserva_fim = reserva_inicio
-                if data_inicio <= reserva_fim and data_fim >= reserva_inicio:
-                    veiculos_reservados_periodo.add(row["placa"])
-        total_reservados = len(veiculos_reservados_periodo) + 1
-        if total_reservados >= len(VEICULOS):
-            disponivel = False
-            st.error("BLOQUEADO - Nao e possivel reservar. O site precisa ter pelo menos 1 veiculo disponivel neste periodo.")
-    if disponivel:
-        st.success(f"DISPONIVEL - Veiculo {placa_selecionada} disponivel de {data_inicio.strftime('%d/%m/%Y')} ate {data_fim.strftime('%d/%m/%Y')}")
+        st.success(f"DISPONÍVEL — Veículo {placa_selecionada} está disponível em {data_inicio.strftime('%d/%m/%Y')}.")
     else:
-        if reserva_conflito is not None:
-            st.error(f"INDISPONIVEL - Veiculo {placa_selecionada} ja reservado no periodo por: {reserva_conflito['condutor']} (Destino: {reserva_conflito['destino']})")
-    botao_habilitado = disponivel and destino.strip() != "" and centro_custo.strip() != "" and hora_saida is not None and hora_retorno is not None
-    if st.button("Confirmar Reserva", type="primary", use_container_width=True, disabled=not botao_habilitado):
+        st.error(f"INDISPONÍVEL — Veículo já reservado por {conflito['condutor']}.")
+
+    habilitado = (disponivel and destino.strip() and centro_custo.strip() and
+                  hora_saida is not None and hora_retorno is not None)
+    if st.button("Confirmar Reserva", type="primary", use_container_width=True, disabled=not habilitado):
         try:
-            salvar_reserva(placa_selecionada, modelo_selecionado, condutor, condutor_logado, destino.strip(), centro_custo.strip(), data_inicio, data_fim, hora_saida.strftime("%H:%M"), hora_retorno.strftime("%H:%M"))
-            st.success(f"Reserva confirmada! Veiculo: {placa_selecionada} | Condutor: {condutor} | Reservado por: {condutor_logado} | Destino: {destino} | CC: {centro_custo} | Periodo: {data_inicio.strftime('%d/%m/%Y')} ate {data_fim.strftime('%d/%m/%Y')} | Horario: {hora_saida.strftime('%H:%M')} as {hora_retorno.strftime('%H:%M')}")
-            st.balloons()
+            salvar_reserva(placa_selecionada, modelo_selecionado, condutor, destino.strip(), centro_custo.strip(), data_inicio, data_fim, hora_saida.strftime("%H:%M"), hora_retorno.strftime("%H:%M"))
+            st.success("Reserva confirmada e salva na Smartsheet.")
+            st.rerun()
         except Exception as e:
-            st.error(f"Erro ao salvar no Smartsheet: {e}")
+            st.error(f"Erro ao salvar na Smartsheet: {e}")
 
 elif pagina == "Reservas Ativas":
     st.title("Reservas Ativas")
     st.markdown("---")
-    if df_reservas.empty:
+    df_ativas = df_reservas[(df_reservas["status"] == "Ativa") & (df_reservas["data_fim"] >= date.today())].sort_values("data_inicio")
+    if df_ativas.empty:
         st.info("Nenhuma reserva ativa no momento.")
     else:
-        df_ativas = df_reservas[(df_reservas["status"] == "Ativa") & (df_reservas["data_reserva"] >= date.today())].sort_values("data_reserva")
-        if df_ativas.empty:
-            st.info("Nenhuma reserva ativa no momento.")
-        else:
-            col_f1, col_f2 = st.columns(2)
-            with col_f1:
-                filtro_data = st.date_input("Filtrar por data:", value=None, key="filtro_data")
-            with col_f2:
-                placas_disponiveis = ["Todas"] + list(df_ativas["placa"].unique())
-                filtro_placa = st.selectbox("Filtrar por veiculo:", placas_disponiveis)
-            if filtro_data:
-                df_ativas = df_ativas[(df_ativas["data_reserva"] <= filtro_data) & (df_ativas["data_fim"] >= filtro_data)]
-            if filtro_placa != "Todas":
-                df_ativas = df_ativas[df_ativas["placa"] == filtro_placa]
-            if df_ativas.empty:
-                st.warning("Nenhuma reserva encontrada com esses filtros.")
-            else:
-                colunas_exibir = ["placa", "modelo", "condutor", "reservado_por", "destino", "centro_custo", "data_reserva", "data_fim", "hora_saida", "hora_retorno"]
-                colunas_exibir = [c for c in colunas_exibir if c in df_ativas.columns]
-                df_exibir = df_ativas[colunas_exibir].copy()
-                nomes_col = ["Placa", "Modelo", "Condutor", "Reservado Por", "Destino", "Centro Custo", "Data Inicio", "Data Fim", "Saida", "Retorno"][:len(colunas_exibir)]
-                df_exibir.columns = nomes_col
-                if "Data Inicio" in df_exibir.columns:
-                    df_exibir["Data Inicio"] = pd.to_datetime(df_exibir["Data Inicio"]).dt.strftime("%d/%m/%Y")
-                if "Data Fim" in df_exibir.columns:
-                    df_exibir["Data Fim"] = pd.to_datetime(df_exibir["Data Fim"]).dt.strftime("%d/%m/%Y")
-                st.dataframe(df_exibir, use_container_width=True, hide_index=True)
-                st.metric("Total de reservas ativas", len(df_ativas))
+        filtro_data, filtro_placa = st.columns(2)
+        with filtro_data:
+            data_filtro = st.date_input("Filtrar por data:", value=None)
+        with filtro_placa:
+            placa_filtro = st.selectbox("Filtrar por veículo:", ["Todas"] + list(df_ativas["placa"].unique()))
+        if data_filtro:
+            df_ativas = df_ativas[(df_ativas["data_inicio"] <= data_filtro) & (df_ativas["data_fim"] >= data_filtro)]
+        if placa_filtro != "Todas":
+            df_ativas = df_ativas[df_ativas["placa"] == placa_filtro]
+        exibir = df_ativas[["placa", "modelo", "condutor", "destino", "data_inicio", "data_fim", "hora_saida", "hora_retorno"]].copy()
+        exibir.columns = ["Placa", "Modelo", "Condutor", "Destino", "Data de Início", "Data de Fim", "Saída", "Retorno"]
+        exibir["Data de Início"] = pd.to_datetime(exibir["Data de Início"]).dt.strftime("%d/%m/%Y")
+        exibir["Data de Fim"] = pd.to_datetime(exibir["Data de Fim"]).dt.strftime("%d/%m/%Y")
+        st.dataframe(exibir, use_container_width=True, hide_index=True)
 
 elif pagina == "Cancelar Reserva":
     st.title("Cancelar Reserva")
-    st.markdown(f"**Logado como:** {condutor_logado}")
     st.markdown("---")
-    if df_reservas.empty:
-        st.info("Nenhuma reserva para cancelar.")
-    else:
-        if "reservado_por" in df_reservas.columns:
-            df_minhas = df_reservas[(df_reservas["status"] == "Ativa") & (df_reservas["data_reserva"] >= date.today()) & (df_reservas["reservado_por"] == condutor_logado)].sort_values("data_reserva")
-        else:
-            df_minhas = df_reservas[(df_reservas["status"] == "Ativa") & (df_reservas["data_reserva"] >= date.today()) & (df_reservas["condutor"] == condutor_logado)].sort_values("data_reserva")
-        if df_minhas.empty:
-            st.info(f"Voce ({condutor_logado}) nao tem reservas ativas para cancelar.")
-        else:
-            st.subheader("Minhas Reservas")
-            opcoes = []
-            for idx, row in df_minhas.iterrows():
-                data_fmt = row["data_reserva"].strftime("%d/%m/%Y") if hasattr(row["data_reserva"], "strftime") else row["data_reserva"]
-                data_fim_fmt = row["data_fim"].strftime("%d/%m/%Y") if hasattr(row.get("data_fim", None), "strftime") else ""
-                condutor_nome = row.get("condutor", "")
-                opcoes.append(f"{row['placa']} | {condutor_nome} | {row['destino']} | {data_fmt} ate {data_fim_fmt} | {row['hora_saida']} as {row['hora_retorno']}")
-            reserva_cancelar = st.selectbox("Selecione sua reserva para cancelar:", opcoes)
-            idx_sel = opcoes.index(reserva_cancelar)
-            row_sel = df_minhas.iloc[idx_sel]
-            st.markdown(f"**Veiculo:** {row_sel['placa']} - {row_sel['modelo']} | **Condutor:** {row_sel['condutor']} | **Destino:** {row_sel['destino']} | **Horario:** {row_sel['hora_saida']} as {row_sel['hora_retorno']}")
-            if st.button("Cancelar esta reserva", type="secondary"):
-                try:
-                    cancelar_reserva(row_sel["row_id"])
-                    st.success("Reserva cancelada com sucesso!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao cancelar: {e}")
-        if "reservado_por" in df_reservas.columns:
-            df_outros = df_reservas[(df_reservas["status"] == "Ativa") & (df_reservas["data_reserva"] >= date.today()) & (df_reservas["reservado_por"] != condutor_logado)].sort_values("data_reserva")
-        else:
-            df_outros = df_reservas[(df_reservas["status"] == "Ativa") & (df_reservas["data_reserva"] >= date.today()) & (df_reservas["condutor"] != condutor_logado)].sort_values("data_reserva")
-        if not df_outros.empty:
-            st.markdown("---")
-            st.subheader("Reservas de outros (somente visualizacao)")
-            colunas_exibir = ["placa", "modelo", "condutor", "reservado_por", "destino", "data_reserva", "data_fim", "hora_saida", "hora_retorno"]
-            colunas_exibir = [c for c in colunas_exibir if c in df_outros.columns]
-            df_outros_exibir = df_outros[colunas_exibir].copy()
-            nomes_col = ["Placa", "Modelo", "Condutor", "Reservado Por", "Destino", "Data Inicio", "Data Fim", "Saida", "Retorno"][:len(colunas_exibir)]
-            df_outros_exibir.columns = nomes_col
-            if "Data Inicio" in df_outros_exibir.columns:
-                df_outros_exibir["Data Inicio"] = pd.to_datetime(df_outros_exibir["Data Inicio"]).dt.strftime("%d/%m/%Y")
-            if "Data Fim" in df_outros_exibir.columns:
-                df_outros_exibir["Data Fim"] = pd.to_datetime(df_outros_exibir["Data Fim"]).dt.strftime("%d/%m/%Y")
-            st.dataframe(df_outros_exibir, use_container_width=True, hide_index=True)
+    df_minhas = df_reservas[
+        (df_reservas["status"] == "Ativa") &
+        (df_reservas["data_fim"] >= date.today()) &
+        (df_reservas["condutor"].astype(str).str.strip().str.casefold() == usuario_atual.strip().casefold())
+    ].sort_values("data_inicio")
 
-elif pagina == "Historico":
-    st.title("Historico de Reservas")
+    if df_minhas.empty:
+        st.info(f"Não há reservas ativas para cancelamento em nome de {usuario_atual}.")
+    else:
+        opcoes = [f"{r['placa']} | {r['destino']} | {r['data_inicio'].strftime('%d/%m/%Y')}" for _, r in df_minhas.iterrows()]
+        selecionada = st.selectbox("Selecione a sua reserva para cancelar:", opcoes)
+        reserva = df_minhas.iloc[opcoes.index(selecionada)]
+        st.markdown(f"**Veículo:** {reserva['placa']} - {reserva['modelo']} | **Condutor:** {reserva['condutor']} | **Destino:** {reserva['destino']} | **Horário:** {reserva['hora_saida']} às {reserva['hora_retorno']}")
+        if st.button("Cancelar minha reserva", type="secondary"):
+            try:
+                cancelar_reserva(reserva["row_id"])
+                st.success("Sua reserva foi cancelada com sucesso.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao cancelar: {e}")
+
+elif pagina == "Histórico":
+    st.title("Histórico de Reservas")
     st.markdown("---")
     if df_reservas.empty:
         st.info("Nenhuma reserva registrada.")
     else:
-        col_f1, col_f2, col_f3 = st.columns(3)
-        with col_f1:
-            filtro_status = st.selectbox("Status:", ["Todas", "Ativa", "Cancelada"])
-        with col_f2:
-            filtro_condutor = st.text_input("Buscar por condutor:", "")
-        with col_f3:
-            filtro_placa_hist = st.selectbox("Veiculo:", ["Todos"] + list(df_reservas["placa"].unique()))
-        df_hist = df_reservas.copy()
-        if filtro_status != "Todas":
-            df_hist = df_hist[df_hist["status"] == filtro_status]
-        if filtro_condutor:
-            df_hist = df_hist[df_hist["condutor"].str.contains(filtro_condutor, case=False, na=False)]
-        if filtro_placa_hist != "Todos":
-            df_hist = df_hist[df_hist["placa"] == filtro_placa_hist]
-        if df_hist.empty:
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            status = st.selectbox("Status:", ["Todas", "Ativa", "Cancelada"])
+        with c2:
+            busca = st.text_input("Buscar por condutor:")
+        with c3:
+            placa = st.selectbox("Veículo:", ["Todos"] + list(df_reservas["placa"].dropna().unique()))
+        hist = df_reservas.copy()
+        if status != "Todas": hist = hist[hist["status"] == status]
+        if busca: hist = hist[hist["condutor"].astype(str).str.contains(busca, case=False, na=False)]
+        if placa != "Todos": hist = hist[hist["placa"] == placa]
+        if hist.empty:
             st.warning("Nenhuma reserva encontrada com esses filtros.")
         else:
-            colunas_exibir = ["placa", "modelo", "condutor", "reservado_por", "destino", "centro_custo", "data_reserva", "data_fim", "hora_saida", "hora_retorno", "status"]
-            colunas_exibir = [c for c in colunas_exibir if c in df_hist.columns]
-            df_hist_exibir = df_hist[colunas_exibir].copy()
-            nomes_col = ["Placa", "Modelo", "Condutor", "Reservado Por", "Destino", "Centro Custo", "Data Inicio", "Data Fim", "Saida", "Retorno", "Status"][:len(colunas_exibir)]
-            df_hist_exibir.columns = nomes_col
-            if "Data Inicio" in df_hist_exibir.columns:
-                df_hist_exibir["Data Inicio"] = pd.to_datetime(df_hist_exibir["Data Inicio"]).dt.strftime("%d/%m/%Y")
-            if "Data Fim" in df_hist_exibir.columns:
-                df_hist_exibir["Data Fim"] = pd.to_datetime(df_hist_exibir["Data Fim"]).dt.strftime("%d/%m/%Y")
-            st.dataframe(df_hist_exibir, use_container_width=True, hide_index=True)
-            st.metric("Total de registros", len(df_hist))
+            exibir = hist[["placa", "modelo", "condutor", "destino", "centro_custo", "data_inicio", "data_fim", "hora_saida", "hora_retorno", "status"]].copy()
+            exibir.columns = ["Placa", "Modelo", "Condutor", "Destino", "Centro de Custo", "Data de Início", "Data de Fim", "Saída", "Retorno", "Status"]
+            exibir["Data de Início"] = pd.to_datetime(exibir["Data de Início"]).dt.strftime("%d/%m/%Y")
+            exibir["Data de Fim"] = pd.to_datetime(exibir["Data de Fim"]).dt.strftime("%d/%m/%Y")
+            st.dataframe(exibir, use_container_width=True, hide_index=True)
+            st.metric("Total de registros", len(hist))
 
-elif pagina == "Calendario":
-    st.title("Calendario de Reservas")
+elif pagina == "Calendário":
+    st.title("Calendário de Reservas")
     st.markdown("---")
     if df_reservas.empty:
         st.info("Nenhuma reserva registrada.")
     else:
-        col_mes, col_ano, col_placa = st.columns(3)
-        with col_mes:
-            mes_selecionado = st.selectbox("Mes:", list(range(1, 13)), index=date.today().month - 1, format_func=lambda x: ["Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"][x-1])
-        with col_ano:
-            ano_selecionado = st.selectbox("Ano:", [2025, 2026, 2027], index=1)
-        with col_placa:
-            placas_cal = ["Todos"] + list(VEICULOS.keys())
-            placa_filtro = st.selectbox("Veiculo:", placas_cal, key="cal_placa")
-        st.markdown("---")
-        cores_veiculos = {"SHI-6J15": "#5F7800", "SHI-6J17": "#AB2E78", "SHI-6J19": "#3498db", "SHI-6J20": "#2ecc71"}
-        legenda_html = ""
-        for placa, info in VEICULOS.items():
-            cor = cores_veiculos.get(placa, "#95a5a6")
-            legenda_html += f'<span style="background-color:{cor}; color:white; padding:2px 8px; border-radius:4px; margin-right:10px; font-size:12px;">{placa} - {info["modelo"]}</span>'
-        st.markdown(f"<div style='margin-bottom:15px;'>{legenda_html}</div>", unsafe_allow_html=True)
-        cal = calendar.monthcalendar(ano_selecionado, mes_selecionado)
-        dias_semana = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"]
-        header_html = "<tr>"
-        for dia in dias_semana:
-            header_html += f'<th style="text-align:center; padding:8px; background-color:#f0f0f0; border:1px solid #ddd;">{dia}</th>'
-        header_html += "</tr>"
-        body_html = ""
-        for semana in cal:
-            body_html += "<tr>"
+        df_cal = df_reservas.copy()
+        df_cal["data_inicio"] = pd.to_datetime(df_cal["data_inicio"], errors="coerce")
+        df_cal["data_fim"] = pd.to_datetime(df_cal["data_fim"], errors="coerce")
+        df_cal = df_cal.dropna(subset=["data_inicio", "data_fim"])
+        meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+        anos = sorted(set(df_cal["data_inicio"].dt.year.tolist() + df_cal["data_fim"].dt.year.tolist() + [date.today().year]))
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            mes = st.selectbox("Mês:", list(range(1, 13)), index=date.today().month - 1, format_func=lambda n: meses[n-1])
+        with c2:
+            ano = st.selectbox("Ano:", anos, index=anos.index(date.today().year))
+        with c3:
+            placa = st.selectbox("Veículo:", ["Todos"] + sorted(df_cal["placa"].dropna().astype(str).unique().tolist()))
+        primeiro_dia = pd.Timestamp(date(ano, mes, 1))
+        ultimo_dia = primeiro_dia + pd.offsets.MonthEnd(1)
+        reservas = df_cal[(df_cal["data_inicio"] <= ultimo_dia) & (df_cal["data_fim"] >= primeiro_dia)].copy()
+        if placa != "Todos": reservas = reservas[reservas["placa"] == placa]
+        cores = {"SHI-6J15":"#5B7F12", "SHI-6J17":"#A92D76", "UAE-7E13":"#2878B5", "UVH-2D53":"#D97A18"}
+        st.markdown("""<style>
+        .legenda{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}.tag{color:#fff;padding:5px 10px;border-radius:5px;font-size:13px}
+        .cal{display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid #ddd;border-left:1px solid #ddd}.cab{background:#f4f5f6;text-align:center;font-weight:bold;padding:12px 4px;border-right:1px solid #ddd;border-bottom:1px solid #ddd}.dia{min-height:125px;padding:7px;border-right:1px solid #ddd;border-bottom:1px solid #ddd}.hoje{background:#eaf7ee}.num{font-weight:bold;margin-bottom:5px}.evento{color:#fff;padding:4px 6px;border-radius:4px;margin:4px 0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        </style>""", unsafe_allow_html=True)
+        legenda = '<div class="legenda">' + ''.join(f'<span class="tag" style="background:{cor}">{p} - Fiat Toro</span>' for p, cor in cores.items()) + '</div>'
+        st.markdown(legenda, unsafe_allow_html=True)
+        html = '<div class="cal">' + ''.join(f'<div class="cab">{d}</div>' for d in ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"])
+        for semana in calendar.monthcalendar(ano, mes):
             for dia in semana:
-                if dia == 0:
-                    body_html += '<td style="border:1px solid #eee; padding:5px; height:80px; vertical-align:top;"></td>'
-                else:
-                    data_dia = date(ano_selecionado, mes_selecionado, dia)
-                    reservas_dia = []
-                    for idx, row in df_reservas.iterrows():
-                        if row["status"] == "Ativa":
-                            inicio = row["data_reserva"]
-                            fim = row.get("data_fim", inicio)
-                            if fim is None or pd.isna(fim):
-                                fim = inicio
-                            if inicio <= data_dia <= fim:
-                                if placa_filtro == "Todos" or row["placa"] == placa_filtro:
-                                    reservas_dia.append(row)
-                    reservas_html = ""
-                    for r in reservas_dia:
-                        cor = cores_veiculos.get(r["placa"], "#95a5a6")
-                        condutor_nome = r.get("condutor", "")
-                        if len(str(condutor_nome)) > 12:
-                            condutor_nome = str(condutor_nome)[:12] + ".."
-                        reservas_html += f'<div style="background-color:{cor}; color:white; font-size:10px; padding:2px 4px; border-radius:3px; margin-top:2px; overflow:hidden; white-space:nowrap;">{condutor_nome}</div>'
-                    hoje_style = "background-color:#e8f5e9;" if data_dia == date.today() else ""
-                    body_html += f'<td style="border:1px solid #ddd; padding:5px; height:80px; vertical-align:top; {hoje_style}"><strong>{dia}</strong>{reservas_html}</td>'
-            body_html += "</tr>"
-        table_html = f'<table style="width:100%; border-collapse:collapse;">{header_html}{body_html}</table>'
-        st.markdown(table_html, unsafe_allow_html=True)
-        st.markdown("---")
-        st.subheader("Reservas do mes")
-        df_mes = df_reservas[(df_reservas["status"] == "Ativa") & (df_reservas["data_reserva"].apply(lambda x: x.month == mes_selecionado and x.year == ano_selecionado if x else False))].sort_values("data_reserva")
-        if placa_filtro != "Todos":
-            df_mes = df_mes[df_mes["placa"] == placa_filtro]
-        if df_mes.empty:
-            st.info("Nenhuma reserva neste mes.")
-        else:
-            colunas_exibir = ["placa", "modelo", "condutor", "destino", "data_reserva", "data_fim", "hora_saida", "hora_retorno"]
-            colunas_exibir = [c for c in colunas_exibir if c in df_mes.columns]
-            df_mes_exibir = df_mes[colunas_exibir].copy()
-            df_mes_exibir.columns = ["Placa", "Modelo", "Condutor", "Destino", "Data Inicio", "Data Fim", "Saida", "Retorno"][:len(colunas_exibir)]
-            if "Data Inicio" in df_mes_exibir.columns:
-                df_mes_exibir["Data Inicio"] = pd.to_datetime(df_mes_exibir["Data Inicio"]).dt.strftime("%d/%m/%Y")
-            if "Data Fim" in df_mes_exibir.columns:
-                df_mes_exibir["Data Fim"] = pd.to_datetime(df_mes_exibir["Data Fim"]).dt.strftime("%d/%m/%Y")
-            st.dataframe(df_mes_exibir, use_container_width=True, hide_index=True)
+                if not dia:
+                    html += '<div class="dia"></div>'
+                    continue
+                data_dia = pd.Timestamp(date(ano, mes, dia))
+                itens = reservas[(reservas["data_inicio"] <= data_dia) & (reservas["data_fim"] >= data_dia)]
+                classe = ' hoje' if data_dia.date() == date.today() else ''
+                eventos = ''.join(f'<div class="evento" style="background:{cores.get(str(r["placa"]), "#6C757D")}" title="{r["placa"]} | {r["condutor"]} | CC: {r.get("centro_custo", "")}">{r["placa"]} - {r["condutor"]}</div>' for _, r in itens.iterrows())
+                html += f'<div class="dia{classe}"><div class="num">{dia}</div>{eventos}</div>'
+        html += '</div>'
+        st.markdown(html, unsafe_allow_html=True)
+        st.metric("Total de reservas no período", len(reservas))
