@@ -86,34 +86,58 @@ def carregar_reservas():
 
     for row in sheet.rows:
         registro = {"row_id": row.id}
+
         for cell in row.cells:
-            registro[nomes_colunas.get(cell.column_id, "")] = cell.value
+            nome_coluna = nomes_colunas.get(cell.column_id, "")
+            registro[nome_coluna] = cell.value
+
         dados.append(registro)
+
+    colunas_internas = [
+        "placa",
+        "modelo",
+        "condutor",
+        "reservado_por",
+        "destino",
+        "centro_custo",
+        "data_inicio",
+        "data_fim",
+        "hora_saida",
+        "hora_retorno",
+        "status",
+        "data_registro",
+        "row_id"
+    ]
 
     df = pd.DataFrame(dados)
 
     if df.empty:
-        return pd.DataFrame(columns=[
-            "placa", "modelo", "condutor", "destino", "centro_custo",
-            "data_inicio", "data_fim", "hora_saida", "hora_retorno",
-            "status", "data_registro", "row_id"
-        ])
+        return pd.DataFrame(columns=colunas_internas)
 
-    # Compatibilidade com reservas antigas que usam apenas Data Reserva.
-    if "Data Inicio" not in df.columns and "Data Reserva" in df.columns:
-        df["Data Inicio"] = df["Data Reserva"]
-    if "Data Fim" not in df.columns:
-        df["Data Fim"] = df.get("Data Inicio")
-    if "Centro de Custo" not in df.columns:
-        df["Centro de Custo"] = ""
+    colunas_smartsheet = [
+        "Placa",
+        "Veiculo",
+        "Condutor",
+        "Reservado Por",
+        "Destino",
+        "Centro de Custo",
+        "Data Inicio",
+        "Data Fim",
+        "Hora Saida",
+        "Hora Retorno",
+        "Status",
+        "Data Registro"
+    ]
 
-    for coluna in ["Data Inicio", "Data Fim"]:
-        df[coluna] = pd.to_datetime(df[coluna], errors="coerce").dt.date
+    for coluna in colunas_smartsheet:
+        if coluna not in df.columns:
+            df[coluna] = ""
 
-    return df.rename(columns={
+    df = df.rename(columns={
         "Placa": "placa",
         "Veiculo": "modelo",
         "Condutor": "condutor",
+        "Reservado Por": "reservado_por",
         "Destino": "destino",
         "Centro de Custo": "centro_custo",
         "Data Inicio": "data_inicio",
@@ -124,8 +148,26 @@ def carregar_reservas():
         "Data Registro": "data_registro"
     })
 
+    for coluna in colunas_internas:
+        if coluna not in df.columns:
+            df[coluna] = ""
 
-def salvar_reserva(placa, modelo, condutor, destino, centro_custo, data_inicio, data_fim, hora_saida, hora_retorno):
+    df["data_inicio"] = pd.to_datetime(
+        df["data_inicio"],
+        errors="coerce"
+    ).dt.date
+
+    df["data_fim"] = pd.to_datetime(
+        df["data_fim"],
+        errors="coerce"
+    ).dt.date
+
+    return df[colunas_internas]
+          
+
+
+def salvar_reserva(placa, modelo, condutor, reservado_por, destino,
+                   centro_custo, data_inicio, data_fim, hora_saida, hora_retorno):
     colunas = obter_colunas()
     nova_linha = smartsheet.models.Row()
     nova_linha.to_top = True
@@ -133,6 +175,7 @@ def salvar_reserva(placa, modelo, condutor, destino, centro_custo, data_inicio, 
     nova_linha.cells.append({"column_id": colunas["Placa"], "value": placa})
     nova_linha.cells.append({"column_id": colunas["Veiculo"], "value": modelo})
     nova_linha.cells.append({"column_id": colunas["Condutor"], "value": condutor})
+    nova_linha.cells.append({"column_id": colunas["Reservado Por"], "value": reservado_por})
     nova_linha.cells.append({"column_id": colunas["Destino"], "value": destino})
     nova_linha.cells.append({"column_id": colunas["Centro de Custo"], "value": centro_custo})
     nova_linha.cells.append({"column_id": colunas["Data Inicio"], "value": data_inicio.isoformat()})
@@ -267,25 +310,56 @@ if pagina == "Home":
 
     st.markdown("---")
     st.subheader("Próximas Reservas")
+
     df_proximas = df_reservas[
-        (df_reservas["status"] == "Ativa") &
-        (df_reservas["data_fim"] >= date.today())
-    ].sort_values("data_inicio").head(10)
+        (df_reservas["status"] == "Ativa")
+        & (df_reservas["data_fim"] >= date.today())
+    ].sort_values("data_inicio")
 
     if df_proximas.empty:
-        st.info("Nenhuma reserva ativa no momento.")
+        st.info("Nenhuma reserva futura ou ativa no momento.")
     else:
-        exibir = df_proximas[[
-            "placa", "modelo", "condutor", "destino", "data_inicio",
-            "data_fim", "hora_saida", "hora_retorno"
-        ]].copy()
+        exibir = df_proximas[
+            [
+                "placa",
+                "modelo",
+                "condutor",
+                "reservado_por",
+                "destino",
+                "centro_custo",
+                "data_inicio",
+                "data_fim",
+                "hora_saida",
+                "hora_retorno"
+            ]
+        ].copy()
+    
+        exibir["data_inicio"] = pd.to_datetime(
+            exibir["data_inicio"]
+        ).dt.strftime("%d/%m/%Y")
+    
+        exibir["data_fim"] = pd.to_datetime(
+            exibir["data_fim"]
+        ).dt.strftime("%d/%m/%Y")
+    
         exibir.columns = [
-            "Placa", "Modelo", "Condutor", "Destino", "Data de Início",
-            "Data de Fim", "Saída", "Retorno"
+            "Placa",
+            "Veículo",
+            "Condutor",
+            "Reservado Por",
+            "Destino",
+            "Centro de Custo",
+            "Data Início",
+            "Data Fim",
+            "Hora Saída",
+            "Hora Retorno"
         ]
-        exibir["Data de Início"] = pd.to_datetime(exibir["Data de Início"]).dt.strftime("%d/%m/%Y")
-        exibir["Data de Fim"] = pd.to_datetime(exibir["Data de Fim"]).dt.strftime("%d/%m/%Y")
-        st.dataframe(exibir, use_container_width=True, hide_index=True)
+    
+        st.dataframe(
+            exibir,
+            use_container_width=True,
+            hide_index=True
+        )
 
 elif pagina == "Nova Reserva":
     st.title("Nova Reserva")
@@ -313,23 +387,48 @@ elif pagina == "Nova Reserva":
 
     disponivel, conflito = verificar_disponibilidade(df_reservas, placa_selecionada, data_inicio, data_fim)
     if disponivel:
-        st.success(f"DISPONÍVEL — Veículo {placa_selecionada} está disponível de {data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}.")
+       st.success(
+    f"DISPONÍVEL - Veículo {placa_selecionada} está disponível de "
+    f"{data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}."
+)
     else:
-        st.error(f"INDISPONÍVEL — Veículo já reservado por {conflito['condutor']} no período de {conflito['data_inicio'].strftime('%d/%m/%Y')} até {conflito['data_fim'].strftime('%d/%m/%Y')}.")
+        st.error(
+    f"INDISPONÍVEL - Veículo já reservado por {conflito['condutor']} no período de "
+    f"{conflito['data_inicio'].strftime('%d/%m/%Y')} até "
+    f"{conflito['data_fim'].strftime('%d/%m/%Y')}."
+)
 
-    habilitado = bool(disponivel and destino.strip() and centro_custo.strip() and hora_saida is not None and hora_retorno is not None)
-    if st.button("Confirmar Reserva", type="primary", use_container_width=True, disabled=not habilitado):
+    habilitado = bool(
+    disponivel
+    and destino.strip()
+    and centro_custo.strip()
+    and hora_saida is not None
+    and hora_retorno is not None
+)
+
+    if st.button(
+        "Confirmar Reserva",
+        type="primary",
+        use_container_width=True,
+        disabled=not habilitado
+    ):
         try:
             salvar_reserva(
-                placa_selecionada, modelo_selecionado, condutor, destino.strip(),
-                centro_custo.strip(), data_inicio, data_fim,
-                hora_saida.strftime("%H:%M"), hora_retorno.strftime("%H:%M")
+                placa_selecionada,
+                modelo_selecionado,
+                condutor,
+                usuario_atual,
+                destino.strip(),
+                centro_custo.strip(),
+                data_inicio,
+                data_fim,
+                hora_saida.strftime("%H:%M"),
+                hora_retorno.strftime("%H:%M")
             )
             st.success("Reserva confirmada e salva na Smartsheet.")
-            st.rerun()
+            st.balloons()
         except Exception as e:
             st.error(f"Erro ao salvar na Smartsheet: {e}")
-
 elif pagina == "Reservas Ativas":
     st.title("Reservas Ativas")
     st.markdown("---")
